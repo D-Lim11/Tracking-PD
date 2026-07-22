@@ -1,0 +1,608 @@
+---
+title: "EPIC-PD Validation using Tracking PD cohort - Age Filtered Dataset"
+author: "Laura Winchester and Rashmi Maurya"
+date: "2026-05-13"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r include=FALSE}
+## DEPENDANCIES
+
+library(tidyverse)
+library(dplyr)
+library(data.table)
+library(readxl)
+library(stringr)
+library(qwraps2)
+library(table1)
+library(stringi)
+library(arsenal)
+library(gtsummary)
+library(fastmap)
+library(SomaDataIO)
+library(factoextra)
+library(RColorBrewer)
+library(limma)
+library(pls)
+library(caret)
+library(EnhancedVolcano)
+library(writexl)
+
+library(lme4)
+library(lmerTest)
+
+## markdown
+library(broom)
+library(haven)
+library(factoextra)
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+library(broom.mixed)
+library(knitr)
+```
+
+
+# Data Loading 
+Data for three visits used. n = 771
+```{r echo= F}
+
+setwd("~/OneDrive - Nexus365/104_MAP2PD_Phase5/AE_EPIC-PD")
+#### data loading
+
+input_RM<- readRDS("/Users/laurawinchester/Library/CloudStorage/OneDrive-Nexus365/00_SHARED/Rashmi/all_visits_df_2313patients_after_filtering_age_at_visit.rds")
+
+dim(input_RM) #2313 7950
+#names(input_RM)
+
+load (  "/Users/laurawinchester/Library/CloudStorage/OneDrive-Nexus365/104_MAP2PD_Phase5/AA_PROBAND_Phase5/01_CODE/2024-11_PD_Phase5_proteins_passExp_ver2.Rdata" )   
+
+epic.pro.list <- read_excel("20250430_EPIC4PD_top_proteins.xlsx", sheet = "reduced4R")
+
+```
+
+
+Data Preprocessing 
+```{r echo= F}
+
+## create baseline variables and transform variables as needed
+
+input_RM <- input_RM %>%
+  group_by(PatientId) %>%
+  mutate(
+    # find baseline if labelled "Baseline", otherwise use earliest visit
+    baseline_MOCA_total = {
+      # pick explicit baseline rows first
+      b <- moca_total[visit_number == 1]
+      if (length(b) == 0) {
+        # if no explicit "Baseline", pick value from earliest visit row
+        b <- moca_total[which.min(as.numeric(factor(visit_number, levels = unique(visit_number))))]
+      }
+      # take first baseline/earliest value and repeat for all group rows
+      rep(b[1], n())
+    }
+  ) %>%
+  ungroup()
+
+input_RM <- input_RM %>%
+  group_by(PatientId) %>%
+  mutate(
+    # find baseline if labelled "Baseline", otherwise use earliest visit
+    baseline_updrs_iii = {
+      # pick explicit baseline rows first
+      b <- updrs_iii[visit_number == 1]
+      if (length(b) == 0) {
+        # if no explicit "Baseline", pick value from earliest visit row
+        b <- updrs_iii[which.min(as.numeric(factor(visit_number, levels = unique(visit_number))))]
+      }
+      # take first baseline/earliest value and repeat for all group rows
+      rep(b[1], n())
+    }
+  ) %>%
+  ungroup()
+
+input_RM$visit_number <- factor(input_RM$visit_number)
+input_RM$gender <- factor(input_RM$gender)
+input_RM$PatientId <- factor(input_RM$PatientId)
+
+```
+
+\vspace{1cm}
+
+## Filter by Patient age at Onset (baseline stats)
+```{r echo=TRUE}
+
+#create baseline only patient file
+working_file = subset(input_RM, input_RM$visit_number == 1)
+
+hist(working_file$age_enrolment, main = "Age_enrolment")
+hist(working_file$age_onset, main = "Age at Onset")
+hist(working_file$age_at_visit, main = "Age at Visit")
+hist(working_file$age_diag, main = "Age at Diagnosis")
+
+# what to use as filter
+dim(subset(working_file, working_file$age_at_visit < 50))
+dim(subset(input_RM, input_RM$age_diag < 50))
+dim(subset(input_RM, input_RM$age_enrolment < 50)) # same as 29 that are less than 50 at first visit
+
+input_RM <- subset(input_RM, input_RM$age_enrolment > 50)
+dim(input_RM)
+
+
+    
+```
+Data for three visits used. Updated n = 742
+
+## Data Testing
+Cross sectional probe example (MOCA total ~ seq.12800.5)
+```{r echo= T}
+m1 <- summary(lm(as.formula(paste("moca_total ~", "seq.12800.5", "+ visit_number + 
++                                age_at_visit + gender + ledd_total" )), data = input_RM))
+
+m2 <- summary(lm(as.formula(paste("moca_total ~", "seq.12800.5", "+ visit_number + 
++                                age_at_visit + gender + ledd_total + baseline_MOCA_total")) , data = input_RM))
+
+
+tab_model(m1, m2, show.se = TRUE, digits = 3, digits.p = 5)
+```
+\vspace{1cm}
+
+## Cross sectional analysis
+Total MOCA Cross sectional analysis - full probe set
+```{r echo= T}
+
+selected_proteins = epic.pro.list$`SomaScan SeqId`
+working_file = subset(input_RM, input_RM$visit_number == 1)
+dim(working_file)
+
+regression_MOCA = matrix(nrow = length(selected_proteins), ncol = 5) # output matrix 
+for (iP in 1:length(selected_proteins)){
+  
+  out <- glm(formula = as.formula( paste( c( paste("moca_total" , " ~ ", selected_proteins[iP]), c("gender", "age_at_visit", "ledd_total")),     collapse = " + " ) ),
+
+             data = working_file,  family = "gaussian")
+  regression_MOCA[iP,3] =  summary(out)$coefficients[2,1] # beta
+  regression_MOCA [iP,4] = summary(out)$coefficients[2,4] # pvalue
+  regression_MOCA [iP,5] = summary(out)$coefficients[2,2] # st.error
+}
+
+regression_MOCA [,1] = epic.pro.list$Protein
+regression_MOCA [,2] = epic.pro.list$`SomaScan SeqId`
+regression_MOCA  <- cbind.data.frame(regression_MOCA , p.adjust(regression_MOCA [,4], method = "fdr"))
+
+colnames(regression_MOCA ) = c("Protein", "seqID", "beta_MOCA", "pvalue", "std.err", "p.adj")
+regression_MOCA <- regression_MOCA %>%
+  arrange(pvalue)
+
+protein.out.sig <- subset(regression_MOCA , regression_MOCA [,4] < 0.05)
+
+knitr::kable(regression_MOCA, format="markdown", digits = 3)
+```
+
+\vspace{1cm}
+
+UPDRS III Cross sectional analysis - full probe set
+```{r echo= T}
+
+selected_proteins = epic.pro.list$`SomaScan SeqId`
+working_file = subset(input_RM, input_RM$visit_number == 1)
+dim(working_file)
+
+regression_UPDRS = matrix(nrow = length(selected_proteins), ncol = 5) # output matrix 
+for (iP in 1:length(selected_proteins)){
+  
+  out <- glm(formula = as.formula( paste( c( paste("updrs_iii" , " ~ ", selected_proteins[iP]), c("gender", "age_at_visit", "ledd_total")),     collapse = " + " ) ),
+
+             data = working_file,  family = "gaussian")
+  regression_UPDRS[iP,3] =  summary(out)$coefficients[2,1] # beta
+  regression_UPDRS [iP,4] = summary(out)$coefficients[2,4] # pvalue
+  regression_UPDRS [iP,5] = summary(out)$coefficients[2,2] # st.error
+}
+
+regression_UPDRS [,1] = epic.pro.list$Protein
+regression_UPDRS [,2] = epic.pro.list$`SomaScan SeqId`
+regression_UPDRS  <- cbind.data.frame(regression_UPDRS , p.adjust(regression_UPDRS [,4], method = "fdr"))
+
+colnames(regression_UPDRS ) = c("Protein", "seqID", "beta_UPDRS", "pvalue", "std.err", "p.adj")
+regression_UPDRS <- regression_UPDRS %>%
+  arrange(pvalue)
+
+protein.out.sig <- subset(regression_UPDRS , regression_UPDRS [,4] < 0.05)
+
+knitr::kable(regression_UPDRS, format="markdown", digits = 3)
+```
+
+## Longitudinal analysis using Mixed Linear Models
+Total MOCA Longitudinal analysis - full probe set
+```{r echo= T}
+
+selected_proteins = epic.pro.list$`SomaScan SeqId`
+working_file = subset(input_RM, input_RM$visit_number == 1)
+
+MLM_MOCA = matrix(nrow = length(selected_proteins), ncol = 5) # output matrix 
+for (iP in 1:length(selected_proteins)){
+  
+  out <- (lmer(as.formula(paste("moca_total ~", selected_proteins[iP], "+ visit_number + 
+                               age_at_visit + gender + ledd_total + 
+                               (1|PatientId)")), data = input_RM)) 
+  MLM_MOCA[iP,3] =  summary(out)$coefficients[2,1] # beta
+  MLM_MOCA [iP,4] = summary(out)$coefficients[2,5] # pvalue
+  MLM_MOCA [iP,5] = summary(out)$coefficients[2,2] # std.err
+}
+
+MLM_MOCA [,1] = epic.pro.list$Protein
+MLM_MOCA [,2] = epic.pro.list$`SomaScan SeqId`
+#colnames(MLM_MOCA ) = c("beta_MOCA", "pvalue", "Protein", "seqID")
+MLM_MOCA  <- cbind.data.frame(MLM_MOCA , p.adjust(MLM_MOCA [,4], method = "fdr"))
+
+
+
+colnames(MLM_MOCA ) = c("Protein", "seqID", "beta_MOCA", "pvalue", "std.err", "p.adj")
+MLM_MOCA <- MLM_MOCA %>%
+  arrange(pvalue)
+
+protein.out.sig <- subset(MLM_MOCA , MLM_MOCA [,6] < 0.05)
+
+knitr::kable(protein.out.sig, format="markdown")
+```
+UPDRS III Longitudinal analysis - full probe set
+```{r echo= T}
+
+selected_proteins = epic.pro.list$`SomaScan SeqId`
+working_file = subset(input_RM, input_RM$visit_number == 1)
+
+MLM_UPDRS = matrix(nrow = length(selected_proteins), ncol = 5) # output matrix 
+for (iP in 1:length(selected_proteins)){
+  
+  out <- (lmer(as.formula(paste("updrs_iii ~", selected_proteins[iP], "+ visit_number + 
+                               age_at_visit + gender + ledd_total + 
+                               (1|PatientId)")), data = input_RM)) 
+  MLM_UPDRS[iP,3] =  summary(out)$coefficients[2,1] # beta
+  MLM_UPDRS [iP,4] = summary(out)$coefficients[2,5] # pvalue
+  MLM_UPDRS [iP,5] = summary(out)$coefficients[2,2] # std.err
+}
+
+MLM_UPDRS [,1] = epic.pro.list$Protein
+MLM_UPDRS [,2] = epic.pro.list$`SomaScan SeqId`
+#colnames(MLM_UPDRS ) = c("beta_UPDRS", "pvalue", "Protein", "seqID")
+MLM_UPDRS  <- cbind.data.frame(MLM_UPDRS , p.adjust(MLM_UPDRS [,4], method = "fdr"))
+
+
+
+colnames(MLM_UPDRS ) = c("Protein", "seqID", "beta_UPDRS", "pvalue", "std.err", "p.adj")
+MLM_UPDRS <- MLM_UPDRS %>%
+  arrange(pvalue)
+
+protein.out.sig <- subset(MLM_UPDRS , MLM_UPDRS [,6] < 0.05)
+
+knitr::kable(protein.out.sig, format="markdown")
+```
+
+
+## Sensitivity Testing
+TPPP2 Testing - longitudinal probes (MOCA Total ~ seq.12800.5)
+```{r echo=FALSE}
+
+  # adds p-values
+
+model1 <- lmer(as.formula(paste("moca_total ~", "seq.12800.5", "+ visit_number + 
++                                age_at_visit + gender + ledd_total +
++                                (1|PatientId)")), data = input_RM)
+
+model2 <- lmer(as.formula(paste("moca_total ~", "seq.12800.5", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + baseline_MOCA_total +
++                                (1|PatientId)")), data = input_RM)
+
+model3 <- lmer(as.formula(paste("moca_total ~", "seq.12800.5", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + rbd_total +
++                                (1|PatientId)")), data = input_RM)
+
+model4 <- lmer(as.formula(paste("moca_total ~", "seq.12800.5", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + updrs_iii_13 +
++                                (1|PatientId)")), data = input_RM)
+
+# Put models in a list
+models <- list(
+  M1 = model1,
+  M2 = model2,
+  M3 = model3,
+  M4 = model4
+)
+
+# Function to extract results
+extract_model <- function(model, name) {
+  tidy(model, effects = "fixed") %>%
+    select(term, estimate, std.error, p.value) %>%
+    rename(
+      Term = term,
+      !!paste0("Estimate (", name, ")") := estimate,
+      !!paste0("SE (", name, ")") := std.error,
+      !!paste0("p (", name, ")") := p.value
+    )
+}
+
+# Extract and merge all tables
+final_tbl <- imap(models, extract_model) %>%
+  reduce(full_join, by = "Term")
+
+# Markdown table
+kable(
+  final_tbl,
+  format = "markdown",
+  digits = c(
+    0,  # Term column
+    2, 2, 5,   # M1: Estimate, SE, p
+    2, 2, 5,   # M2
+    2, 2, 5,   # M3
+    2, 2, 5   # M4
+  )
+)
+
+# tbl <- tidy(model, effects = "fixed") %>%
+#   select(term, estimate, std.error, p.value) %>%
+#   rename(
+#     Term = term,
+#     Estimate = estimate,
+#     `Std. Error` = std.error,
+#     `p-value` = p.value
+#   )
+
+# Markdown table
+#kable(tbl, format = "markdown", digits = 3)
+
+
+
+#m1 <- summary(lmer(as.formula(paste("moca_total ~", "seq.12800.5", "+ visit_number + 
+#                                age_at_visit + gender + ledd_total +
+#                                (1|PatientId)")), data = input_RM))
+
+#m2 <- summary(lmer(as.formula(paste("moca_total ~", "seq.12800.5", "+ visit_number + 
+#                                (1|PatientId)")), data = input_RM))
+#                                age_at_visit + gender + ledd_total + baseline_MOCA_total +
+
+
+
+```
+
+\vspace{1cm}
+MOCA Total ~ MFAP5 - longitudinal 
+```{r echo=FALSE}
+
+  # seq.6440.31  = MFAP5
+
+model1 <- lmer(as.formula(paste("moca_total ~", "seq.6440.31", "+ visit_number + 
++                                age_at_visit + gender + ledd_total +
++                                (1|PatientId)")), data = input_RM)
+
+model2 <- lmer(as.formula(paste("moca_total ~", "seq.6440.31", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + baseline_MOCA_total +
++                                (1|PatientId)")), data = input_RM)
+
+model3 <- lmer(as.formula(paste("moca_total ~", "seq.6440.31", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + rbd_total +
++                                (1|PatientId)")), data = input_RM)
+
+model4 <- lmer(as.formula(paste("moca_total ~", "seq.6440.31", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + updrs_iii_13 +
++                                (1|PatientId)")), data = input_RM)
+
+# Put models in a list
+models <- list(
+  M1 = model1,
+  M2 = model2,
+  M3 = model3,
+  M4 = model4
+)
+
+# Function to extract results
+extract_model <- function(model, name) {
+  tidy(model, effects = "fixed") %>%
+    select(term, estimate, std.error, p.value) %>%
+    rename(
+      Term = term,
+      !!paste0("Estimate (", name, ")") := estimate,
+      !!paste0("SE (", name, ")") := std.error,
+      !!paste0("p (", name, ")") := p.value
+    )
+}
+
+# Extract and merge all tables
+final_tbl <- imap(models, extract_model) %>%
+  reduce(full_join, by = "Term")
+
+# Markdown table
+kable(
+  final_tbl,
+  format = "markdown",
+  digits = c(
+    0,  # Term column
+    2, 2, 5,   # M1: Estimate, SE, p
+    2, 2, 5,   # M2
+    2, 2, 5,   # M3
+    2, 2, 5   # M4
+  )
+)
+
+```
+
+MOCA Total ~ HPGDS - longitudinal 
+```{r echo=FALSE}
+
+  # seq.12549.33  = HPGDS
+
+model1 <- lmer(as.formula(paste("moca_total ~", "seq.12549.33", "+ visit_number + 
++                                age_at_visit + gender + ledd_total +
++                                (1|PatientId)")), data = input_RM)
+
+model2 <- lmer(as.formula(paste("moca_total ~", "seq.12549.33", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + baseline_MOCA_total +
++                                (1|PatientId)")), data = input_RM)
+
+model3 <- lmer(as.formula(paste("moca_total ~", "seq.12549.33", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + rbd_total +
++                                (1|PatientId)")), data = input_RM)
+
+model4 <- lmer(as.formula(paste("moca_total ~", "seq.12549.33", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + updrs_iii_13 +
++                                (1|PatientId)")), data = input_RM)
+
+# Put models in a list
+models <- list(
+  M1 = model1,
+  M2 = model2,
+  M3 = model3,
+  M4 = model4
+)
+
+# Function to extract results
+extract_model <- function(model, name) {
+  tidy(model, effects = "fixed") %>%
+    select(term, estimate, std.error, p.value) %>%
+    rename(
+      Term = term,
+      !!paste0("Estimate (", name, ")") := estimate,
+      !!paste0("SE (", name, ")") := std.error,
+      !!paste0("p (", name, ")") := p.value
+    )
+}
+
+# Extract and merge all tables
+final_tbl <- imap(models, extract_model) %>%
+  reduce(full_join, by = "Term")
+
+
+# Markdown table
+kable(
+  final_tbl,
+  format = "markdown",
+  digits = c(
+    0,  # Term column
+    2, 2, 5,   # M1: Estimate, SE, p
+    2, 2, 5,   # M2
+    2, 2, 5,   # M3
+    2, 2, 5   # M4
+  )
+)
+
+```
+
+
+UPDRS III ~ HPGDS - longitudinal 
+```{r echo=FALSE}
+
+  # seq.12549.33  = HPGDS
+
+model1 <- lmer(as.formula(paste("updrs_iii ~", "seq.12549.33", "+ visit_number + 
++                                age_at_visit + gender + ledd_total +
++                                (1|PatientId)")), data = input_RM)
+
+model2 <- lmer(as.formula(paste("updrs_iii ~", "seq.12549.33", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + baseline_updrs_iii +
++                                (1|PatientId)")), data = input_RM)
+
+model3 <- lmer(as.formula(paste("updrs_iii ~", "seq.12549.33", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + rbd_total +
++                                (1|PatientId)")), data = input_RM)
+
+
+# Put models in a list
+models <- list(
+  M1 = model1,
+  M2 = model2,
+  M3 = model3
+)
+
+# Function to extract results
+extract_model <- function(model, name) {
+  tidy(model, effects = "fixed") %>%
+    select(term, estimate, std.error, p.value) %>%
+    rename(
+      Term = term,
+      !!paste0("Estimate (", name, ")") := estimate,
+      !!paste0("SE (", name, ")") := std.error,
+      !!paste0("p (", name, ")") := p.value
+    )
+}
+
+# Extract and merge all tables
+final_tbl <- imap(models, extract_model) %>%
+  reduce(full_join, by = "Term")
+
+# Markdown table
+kable(
+  final_tbl,
+  format = "markdown",
+  digits = c(
+    0,  # Term column
+    2, 2, 5,   # M1: Estimate, SE, p
+    2, 2, 5,   # M2
+    2, 2, 5   # M3
+  )
+)
+```
+
+
+UPDRS III ~ TPPP2  - longitudinal 
+```{r echo=FALSE}
+
+  # seq.12800.5  = TPPP2 
+
+model1 <- lmer(as.formula(paste("updrs_iii ~", "seq.12800.5", "+ visit_number + 
++                                age_at_visit + gender + ledd_total +
++                                (1|PatientId)")), data = input_RM)
+
+model2 <- lmer(as.formula(paste("updrs_iii ~", "seq.12800.5", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + baseline_updrs_iii +
++                                (1|PatientId)")), data = input_RM)
+
+model3 <- lmer(as.formula(paste("updrs_iii ~", "seq.12800.5", "+ visit_number + 
++                               age_at_visit + gender + ledd_total + rbd_total +
++                                (1|PatientId)")), data = input_RM)
+
+
+# Put models in a list
+models <- list(
+  M1 = model1,
+  M2 = model2,
+  M3 = model3
+)
+
+# Function to extract results
+extract_model <- function(model, name) {
+  tidy(model, effects = "fixed") %>%
+    select(term, estimate, std.error, p.value) %>%
+    rename(
+      Term = term,
+      !!paste0("Estimate (", name, ")") := estimate,
+      !!paste0("SE (", name, ")") := std.error,
+      !!paste0("p (", name, ")") := p.value
+    )
+}
+
+# Extract and merge all tables
+final_tbl <- imap(models, extract_model) %>%
+  reduce(full_join, by = "Term")
+
+# Markdown table
+kable(
+  final_tbl,
+  format = "markdown",
+  digits = c(
+    0,  # Term column
+    2, 2, 5,   # M1: Estimate, SE, p
+    2, 2, 5,   # M2
+    2, 2, 5   # M3
+  )
+)
+
+```
+
+
+
