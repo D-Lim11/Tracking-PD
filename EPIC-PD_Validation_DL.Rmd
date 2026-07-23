@@ -94,7 +94,6 @@ Note: *contr.sum()* sets contrasts such that the coefficients represent deviatio
 ```{r}
 #Function to run the mixed-effect model across all module eigenproteins from clinical variables of interest
 all_results <- list()
-all_models <- list()
 
 for(outcome in clinical_outcomes) {
   
@@ -135,7 +134,7 @@ for(outcome in clinical_outcomes) {
     
   }
   
-  all_models[[outcome]] <- clin_lmer
+  #Compiling the results
   all_results[[outcome]] <- bind_rows(clin_results)
   
 }
