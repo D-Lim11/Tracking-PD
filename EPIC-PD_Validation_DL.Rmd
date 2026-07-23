@@ -15,8 +15,10 @@ knitr::opts_chunk$set(echo = TRUE)
 Refer to *2026-05_EPIC-PD_Validation_v2.Rmd* for the original code by Rashmi
 
 ```{r include = F}
+#Setting the working directory
 here::i_am("EPIC-PD_Validation_DL.Rmd")
 
+#Loading packages
 library(tidyverse)
 library(lme4)
 library(lmerTest)
@@ -24,6 +26,7 @@ library(sjPlot)
 library(broom)
 library(car)
 
+#Loading files
 input_RM <- readRDS("all_visits_df_2313patients_after_filtering_age_at_visit.rds") #Merged proteomic and clinical data
 me_v1 <- readRDS("module_eigengenes_visit_1.rds") #Module eigenproteins (Visit/Timepoint 1)
 me_v2 <- readRDS("ME_of_relabelled_modules_visit2.rds") #Module eigenproteins (Visit/Timepoint 2)
@@ -78,79 +81,74 @@ input_RM_long <- left_join(me_all, input_RM, by = c("PatientId", "visit_number")
   
   #Sorting by Participant ID
   group_by(PatientId) %>% arrange(PatientId)
+
+#Specifying contrasts for type III ANOVA (lmer with interactions)
+contrasts(input_RM_long$visit_number) <- contr.sum(3)
+contrasts(input_RM_long$gender) <- contr.sum(2)
 ```
 
-## MOCA ##
+Note: *contr.sum()* sets contrasts such that the coefficients represent deviations from the grand mean, instead of a reference category
+
+## RUNNING THE MIXED-EFFECT MODELS ##
 
 ```{r}
-moca_lmer <- list()
-moca_results <- list()
+#Function to run the mixed-effect model across all module eigenproteins from clinical variables of interest
+all_results <- list()
+all_models <- list()
 
-for(i in module_colours) {
+for(outcome in clinical_outcomes) {
   
-  #Defining the model formula
-  formula <- as.formula(paste0("moca_total ~", i, "*visit_number + age_at_visit + gender + (1|PatientId)"))
+  clin_lmer <- list()
+  clin_results <- list()
   
-  #Running the mixed-effect model
-  moca_lmer[[i]] <- lmer(formula, data = input_RM_long)
+  for(i in module_colours) {
+    
+    #Defining the model formula
+    formula <- as.formula(paste0(outcome, "~", i, "*visit_number + age_at_visit + gender + (1|PatientId)"))
+    
+    #Running the mixed-effect model
+    clin_lmer[[i]] <- lmer(formula, data = input_RM_long)
+    
+    #Extracting the statistics from the main effect (module eigenprotein)
+    main <- summary(clin_lmer[[i]])$coefficients %>% 
+      as.data.frame() %>%
+      rownames_to_column(var = "term") %>%
+      filter(term == i)
+    
+    #Running ANOVA on the interaction term (since visit_number has 3 factor-level time points [1,4,7])
+    interaction <- anova(clin_lmer[[i]], type = 3) %>%
+      as.data.frame() %>%
+      rownames_to_column(var = "term") %>%
+      filter(term == paste0(i, ":visit_number")) 
+    
+    #Building the results table
+    clin_results[[i]] <- data.frame(
+      clin_var = outcome,
+      module = i,
+      beta = main$Estimate,
+      se = main$`Std. Error`,
+      t = main$`t value`,
+      p_main = main$`Pr(>|t|)`,
+      F = interaction$`F value`,
+      p_interaction = interaction$`Pr(>F)`
+    )
+    
+  }
   
-  #Extracting the statistics from the main effect (module eigenprotein)
-  main <- summary(moca_lmer[[i]])$coefficients %>% 
-    as.data.frame() %>%
-    rownames_to_column(var = "term") %>%
-    filter(term == i)
-  
-  #Running ANOVA on the interaction effect (since visit_number has 3 levels [time points 1,4,7])
-  interaction <- anova(moca_lmer[[i]], type = 3) %>%
-    as.data.frame() %>%
-    rownames_to_column(var = "term") %>%
-    filter(term == paste0(i, ":visit_number")) 
-  
-  #Building the results table
-  moca_results[[i]] <- data.frame(
-    module = i,
-    beta = main$Estimate,
-    se = main$`Std. Error`,
-    t = main$`t value`,
-    p_main = main$`Pr(>|t|)`,
-    F = interaction$`F value`,
-    p_interaction = interaction$`Pr(>F)`
-  )
+  all_models[[outcome]] <- clin_lmer
+  all_results[[outcome]] <- bind_rows(clin_results)
   
 }
 
 #Summary table with adjusted p-values
-moca_results <- bind_rows(moca_results) %>%
+all_results <- bind_rows(all_results) %>%
   mutate(
     FDR_main = p.adjust(p_main, method = "BH"),
     FDR_interaction = p.adjust(p_interaction, method = "BH")
   )
 ```
 
-
-
-
-
 ```{r}
-## Playground ##
-test_lmer <- lmer(moca_total ~ MEbrown*visit_number + age_at_visit + gender + (1|PatientId), data = input_RM_long)
-tab_model(test_lmer)
-
-test <- summary(test_lmer)$coefficients %>% 
-  as.data.frame() %>%
-  rownames_to_column(var = "term") %>%
-  filter(term == "MEbrown")
-
-test_anova <- anova(test_lmer, type = 3) %>%
-  as.data.frame() %>%
-  rownames_to_column(var = "term") %>%
-  filter(term == paste0(i, ":time"))
-
-test_tibble <- data.frame(
-  module = "MEbrown",
-  beta = test$`Std. Error` %>% round(3)
-)
+#Saving the output
+write.csv(all_results, "trackingPD_lmer.csv", row.names = F)
 ```
-
-
-
