@@ -1,0 +1,126 @@
+﻿protein symbol,module,reason for analysis
+ASL,red , test for GCSI (and others)
+PCBD1,red , test for GCSI (and others)
+HMGCS1,red , test for GCSI (and others)
+GPD1,red , test for GCSI (and others)
+RIDA,red , test for GCSI (and others)
+OTC,red , test for GCSI (and others)
+SORD,red , test for GCSI (and others)
+ADH1C,red , test for GCSI (and others)
+DCXR,red , test for GCSI (and others)
+AKR7A3,red , test for GCSI (and others)
+ALDOB,red , test for GCSI (and others)
+GATM,red , test for GCSI (and others)
+PSAT1,red , test for GCSI (and others)
+AKR1C4,red , test for GCSI (and others)
+MAT1A,red , test for GCSI (and others)
+PCK2,red , test for GCSI (and others)
+GSTA2,red , test for GCSI (and others)
+TKFC,red , test for GCSI (and others)
+ACY1,red , test for GCSI (and others)
+FBP1,red , test for GCSI (and others)
+ADH4,red , test for GCSI (and others)
+FTCD,red , test for GCSI (and others)
+ALDOC,red , test for GCSI (and others)
+KNG1,black,cis- hub proteins
+CFI,black,cis- hub proteins
+KNG1,black,cis- hub proteins
+CFB,black,cis- hub proteins
+CFI,black,cis- hub proteins
+KNG1,black,cis- hub proteins
+CFI,black,cis- hub proteins
+CA13,blue,cis- hub proteins
+MTHFS,blue,cis- hub proteins
+MAPK3,blue,cis- hub proteins
+TSG101,blue,cis- hub proteins
+MTHFS,blue,cis- hub proteins
+MAPK3,blue,cis- hub proteins
+TSG101,blue,cis- hub proteins
+MTHFS,blue,cis- hub proteins
+MAPK3,blue,cis- hub proteins
+TSG101,blue,cis- hub proteins
+GDI2,brown,cis- hub proteins
+PNP,brown,cis- hub proteins
+TPI1,brown,cis- hub proteins
+BLVRA,brown,cis- hub proteins
+GDI2,brown,cis- hub proteins
+PNP,brown,cis- hub proteins
+TPI1,brown,cis- hub proteins
+BLVRA,brown,cis- hub proteins
+GDI2,brown,cis- hub proteins
+PNP,brown,cis- hub proteins
+TPI1,brown,cis- hub proteins
+BLVRA,brown,cis- hub proteins
+SLAMF7,turquoise,cis- hub proteins
+SMPDL3A,turquoise,cis- hub proteins
+HBZ,turquoise,cis- hub proteins
+IL15RA,turquoise,cis- hub proteins
+DLK1,turquoise,cis- hub proteins
+KYNU,turquoise,cis- hub proteins
+PLG,turquoise,cis- hub proteins
+IL1RL2,turquoise,cis- hub proteins
+FCRL6,turquoise,cis- hub proteins
+CHST11,turquoise,cis- hub proteins
+KLRF1,turquoise,cis- hub proteins
+RIC3,turquoise,cis- hub proteins
+PI15,turquoise,cis- hub proteins
+CUL9,turquoise,cis- hub proteins
+DNAJC4,turquoise,cis- hub proteins
+TRIL,turquoise,cis- hub proteins
+RAPGEF5,turquoise,cis- hub proteins
+LRRC74A,turquoise,cis- hub proteins
+HK1,turquoise,cis- hub proteins
+PDCL2,turquoise,cis- hub proteins
+TMEM119,turquoise,cis- hub proteins
+FGFR3,turquoise,cis- hub proteins
+SCN4B,turquoise,cis- hub proteins
+SLAMF7,turquoise,cis- hub proteins
+SMPDL3A,turquoise,cis- hub proteins
+HBZ,turquoise,cis- hub proteins
+IL15RA,turquoise,cis- hub proteins
+DLK1,turquoise,cis- hub proteins
+KYNU,turquoise,cis- hub proteins
+PLG,turquoise,cis- hub proteins
+IL1RL2,turquoise,cis- hub proteins
+FCRL6,turquoise,cis- hub proteins
+KLRF1,turquoise,cis- hub proteins
+RIC3,turquoise,cis- hub proteins
+PI15,turquoise,cis- hub proteins
+KIAA0319L,turquoise,cis- hub proteins
+GZMB,turquoise,cis- hub proteins
+CUL9,turquoise,cis- hub proteins
+DNAJC4,turquoise,cis- hub proteins
+TRIL,turquoise,cis- hub proteins
+RAPGEF5,turquoise,cis- hub proteins
+LRRC74A,turquoise,cis- hub proteins
+HK1,turquoise,cis- hub proteins
+PDCL2,turquoise,cis- hub proteins
+TMEM119,turquoise,cis- hub proteins
+FGFR3,turquoise,cis- hub proteins
+SCN4B,turquoise,cis- hub proteins
+SLAMF7,turquoise,cis- hub proteins
+SMPDL3A,turquoise,cis- hub proteins
+HBZ,turquoise,cis- hub proteins
+IL15RA,turquoise,cis- hub proteins
+GNMT,turquoise,cis- hub proteins
+DLK1,turquoise,cis- hub proteins
+KYNU,turquoise,cis- hub proteins
+PLG,turquoise,cis- hub proteins
+IL1RL2,turquoise,cis- hub proteins
+FCRL6,turquoise,cis- hub proteins
+CHST11,turquoise,cis- hub proteins
+KLRF1,turquoise,cis- hub proteins
+RIC3,turquoise,cis- hub proteins
+PI15,turquoise,cis- hub proteins
+GZMB,turquoise,cis- hub proteins
+CUL9,turquoise,cis- hub proteins
+DNAJC4,turquoise,cis- hub proteins
+TRIL,turquoise,cis- hub proteins
+RAPGEF5,turquoise,cis- hub proteins
+VAMP8,turquoise,cis- hub proteins
+LRRC74A,turquoise,cis- hub proteins
+HK1,turquoise,cis- hub proteins
+PDCL2,turquoise,cis- hub proteins
+TMEM119,turquoise,cis- hub proteins
+FGFR3,turquoise,cis- hub proteins
+SCN4B,turquoise,cis- hub proteins
