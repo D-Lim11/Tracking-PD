@@ -118,10 +118,10 @@ contrasts(input_RM_long$gender) <- contr.sum(2) #For 2 sex categories (F,M)
 
 Note: *contr.sum()* sets contrasts such that the coefficients represent deviations from the grand mean, instead of a reference category
 
-## MIXED-EFFECT MODELS WITH MODULE EIGENPROTEINS AS THE DV ##
+## MIXED-EFFECT MODELS WITH clin_var ~ MEcolor ##
 
 ```{r}
-#Function to run the mixed-effect model across all module eigenproteins from clinical variables of interest
+#Function to run the mixed-effect model on all clinical variables of interest across all modules
 clin_mlm_results <- list()
 
 for(j in clinical_outcomes) {
@@ -181,49 +181,55 @@ clin_mlm_results <- bind_rows(clin_mlm_results) %>%
 write.csv(clin_mlm_results, "trackingPD_clin_mlm.csv", row.names = F)
 ```
 
-## MIXED-EFFECT MODELS WITH SELECT PROTEINS AS THE DV ##
+## MIXED-EFFECT MODELS WITH clin_var ~ probe_id ##
 
 ```{r}
-#Function to run the mixed-effect model across all proteins of interest
+#Function to run the mixed-effect model on all clinical variables of interest across all select proteins 
 prot_mlm_results <- list()
-prot_lmer <- list()
 
-for(i in 1:nrow(protein_list)) {
+for(j in clinical_outcomes) {
   
-  #Defining variables
-  probe <- protein_list$probe.id[i]
-  module <- protein_list$module[i]
+  prot_lmer <- list()
+  prot_results <- list()
   
-  #Defining the model formula
-  formula <- as.formula(paste0(probe, "~", module, "*visit_number + age_at_visit + gender + (1|PatientId)"))
+  for(i in 1:nrow(protein_list)) {
+    
+    probe <- protein_list$probe.id[i]
+    
+    #Defining the model formula
+    formula <- as.formula(paste0(j, "~", probe, "*visit_number + age_at_visit + gender + (1|PatientId)"))
+    
+    #Running the mixed-effect model
+    prot_lmer[[i]] <- lmer(formula, data = input_RM_long)
+    
+    #Extracting the statistics from the main effect (module eigenprotein)
+    main <- summary(prot_lmer[[i]])$coefficients %>% 
+      as.data.frame() %>%
+      rownames_to_column(var = "term") %>%
+      filter(term == probe)
+    
+    #Running ANOVA on the interaction term
+    interaction <- anova(prot_lmer[[i]], type = 3) %>%
+      as.data.frame() %>%
+      rownames_to_column(var = "term") %>%
+      filter(term == paste0(probe, ":visit_number"))
+    
+    #Building the results table
+    prot_results[[i]] <- data.frame(
+      clin_var = j,
+      probe.id = probe,
+      beta = main$Estimate,
+      se = main$`Std. Error`,
+      t = main$`t value`,
+      p_main = main$`Pr(>|t|)`,
+      F = interaction$`F value`,
+      p_interaction = interaction$`Pr(>F)`
+    )
+    
+  }
   
-  #Running the mixed-effect model
-  model <- lmer(formula, data = input_RM_long)
-  prot_lmer[[i]] <- model
-  
-  #Extracting the statistics from the main effect (module eigenprotein)
-  main <- summary(model)$coefficients %>% 
-    as.data.frame() %>%
-    rownames_to_column(var = "term") %>%
-    filter(term == module)
-  
-  #Running ANOVA on the interaction term
-  interaction <- anova(model, type = 3) %>%
-    as.data.frame() %>%
-    rownames_to_column(var = "term") %>%
-    filter(term == paste0(module, ":visit_number"))
-  
-  #Building the results table
-  prot_mlm_results[[i]] <- data.frame(
-    probe.id = probe,
-    module = module,
-    beta = main$Estimate,
-    se = main$`Std. Error`,
-    t = main$`t value`,
-    p_main = main$`Pr(>|t|)`,
-    F = interaction$`F value`,
-    p_interaction = interaction$`Pr(>F)`
-  )
+  #Compiling the results
+  prot_mlm_results[[j]] <- bind_rows(prot_results)
   
 }
 
@@ -238,11 +244,10 @@ prot_mlm_results <- bind_rows(prot_mlm_results) %>%
   ) %>%
   
   #Reorganising column order for clarity
-  dplyr::select(protein_symbol, probe_id, everything(), -probe.id, -protein.symbol)
+  dplyr::select(clin_var, protein_symbol, probe_id, everything(), -probe.id, -protein.symbol) 
 ```
 
 ```{r}
 #Saving the output
 write.csv(prot_mlm_results, "trackingPD_prot_mlm.csv", row.names = F)
 ```
-
