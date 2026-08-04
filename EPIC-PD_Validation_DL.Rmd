@@ -38,6 +38,30 @@ analyte_info <- read.csv("analyte_info.csv") #Aptamer metadata
 ## Data pre-processing ##
 
 ```{r}
+#Cleaning the protein list of interest
+protein_list <- protein_list %>%
+  
+  #Matching the protein list with mappable probe IDs
+  left_join(analyte_info %>% 
+              dplyr::select("AptName", "EntrezGeneSymbol") %>%
+              dplyr::rename("protein.symbol" = "EntrezGeneSymbol",
+                            "probe.id" = "AptName"),
+            by = "protein.symbol",
+            relationship = "many-to-many") %>% #Same Entrez symbols can have different probe IDs
+  
+  #Renaming the module names using a common naming system
+  mutate(module = case_when(
+    str_detect(module, "red") ~ "MEred",
+    str_detect(module, "black") ~ "MEblack",
+    str_detect(module, "blue") ~ "MEblue",
+    str_detect(module, "brown") ~ "MEbrown",
+    str_detect(module, "turquoise") ~ "MEturquoise"
+  )) %>%
+  
+  distinct(probe.id, .keep_all = T)
+```
+
+```{r}
 #Defining the variables of interest
 module_colours <- c("MEbrown", "MEblue", "MEturquoise", "MEgreen", "MEyellow", "MEblack", "MEred")
 clinical_outcomes <- c("moca_total", "moca_total_adj", "seman_flu_score", 
@@ -94,30 +118,6 @@ contrasts(input_RM_long$gender) <- contr.sum(2) #For 2 sex categories (F,M)
 
 Note: *contr.sum()* sets contrasts such that the coefficients represent deviations from the grand mean, instead of a reference category
 
-```{r}
-#Cleaning the select protein list
-protein_list <- protein_list %>%
-  
-  #Matching the protein list with mappable probe IDs
-  left_join(analyte_info %>% 
-              dplyr::select("AptName", "EntrezGeneSymbol") %>%
-              dplyr::rename("protein.symbol" = "EntrezGeneSymbol",
-                            "probe.id" = "AptName"),
-            by = "protein.symbol",
-            relationship = "many-to-many") %>% #Same Entrez symbols can have different probe IDs
-  
-  #Renaming the module names using a common naming system
-  mutate(module = case_when(
-    str_detect(module, "red") ~ "MEred",
-    str_detect(module, "black") ~ "MEblack",
-    str_detect(module, "blue") ~ "MEblue",
-    str_detect(module, "brown") ~ "MEbrown",
-    str_detect(module, "turquoise") ~ "MEturquoise"
-  )) %>%
-  
-  distinct(probe.id, .keep_all = T)
-```
-
 ## MIXED-EFFECT MODELS WITH MODULE EIGENPROTEINS AS THE DV ##
 
 ```{r}
@@ -168,7 +168,7 @@ for(j in clinical_outcomes) {
   
 }
 
-#Summary table with BH-adjusted p-values
+#Compiling the results with BH-adjusted p-values
 clin_mlm_results <- bind_rows(clin_mlm_results) %>%
   mutate(
     FDR_main = p.adjust(p_main, method = "BH"),
@@ -227,7 +227,7 @@ for(i in 1:nrow(protein_list)) {
   
 }
 
-#Compiling the results and adjusting the P-values
+#Compiling the results with BH-adjusted p-values
 prot_mlm_results <- bind_rows(prot_mlm_results) %>%
   left_join(protein_list %>% dplyr::select(probe.id, protein.symbol), by = "probe.id") %>%
   mutate(
