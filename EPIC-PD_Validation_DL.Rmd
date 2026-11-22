@@ -63,11 +63,27 @@ protein_list <- protein_list %>%
 
 ```{r}
 #Defining the variables of interest
-module_colours <- c("MEbrown", "MEblue", "MEturquoise", "MEgreen", "MEyellow", "MEblack", "MEred")
-clinical_outcomes <- c("moca_total", "moca_total_adj", "seman_flu_score", 
-                       "updrs_i", "updrs_ii", "updrs_iii", "updrs_iv", 
-                       "pdq8_total", "ess_total", "eq5d_index", 
-                       "rbd_total", "gcsi_total", "leeds_anx_total", "hoehn_and_yahr_stage", "nmss_sleep")
+module_colours <- c(
+  "MEbrown", 
+  "MEblue", 
+  "MEturquoise", 
+  "MEgreen", 
+  "MEyellow", 
+  "MEblack", 
+  "MEred"
+  )
+
+clinical_outcomes <- c(
+  "moca_total", "moca_total_adj", "seman_flu_score", 
+  "updrs_i", "updrs_ii", "updrs_iii", "updrs_iv", 
+  "pdq8_total", "ess_total", "eq5d_index", 
+  "rbd_total", "gcsi_total", "leeds_anx_total", "hoehn_and_yahr_stage", "nmss_sleep"
+)
+
+ldopa_vars <- c(
+  "ldopa_bin",
+  "ledd_total"
+)
 
 #Merging and wrangling the eigenprotein values into a single dataframe
 me_all <- bind_rows(me_v1, me_v2, me_v3) %>%
@@ -98,14 +114,18 @@ input_RM_long <- left_join(me_all, input_RM, by = c("PatientId", "visit_number")
     all_of(clinical_outcomes),
     
     #Proteins of interest
-    all_of(protein_list$probe.id)
+    all_of(protein_list$probe.id),
+    
+    #Levodopa variables
+    all_of(levodopa_vars)
     
   ) %>%
   
   #Setting the appropriate levels for factors
   mutate(
     visit_number = factor(visit_number, levels = c("1", "4", "7")),
-    gender = factor(gender, levels = c("Female", "Male"))
+    gender = factor(gender, levels = c("Female", "Male")),
+    ldopa_bin = factor(ldopa_bin, c("0", "1"))
   ) %>%
   
   #Sorting by Participant ID
@@ -114,9 +134,12 @@ input_RM_long <- left_join(me_all, input_RM, by = c("PatientId", "visit_number")
 #Specifying contrasts for type III ANOVA (lmer with interactions)
 contrasts(input_RM_long$visit_number) <- contr.sum(3) #For 3 time points (1,4,7)
 contrasts(input_RM_long$gender) <- contr.sum(2) #For 2 sex categories (F,M)
+contrasts(input_RM_long$ldopa_bin) <- contr.sum(2)
 ```
 
-Note: *contr.sum()* sets contrasts such that the coefficients represent deviations from the grand mean, instead of a reference category
+Note: 
+ - *contr.sum()* sets contrasts such that the coefficients represent deviations from the grand mean, instead of a reference category
+ - This is important for the ANOVA run on the interaction term (time) since visit_number has 3 factor-level time points [1,4,7]
 
 ## MIXED-EFFECT MODELS WITH clin_var ~ MEcolor ##
 
@@ -132,7 +155,11 @@ for(j in clinical_outcomes) {
   for(i in module_colours) {
     
     #Defining the model formula
-    formula <- as.formula(paste0(j, "~", i, "*visit_number + age_at_visit + gender + (1|PatientId)"))
+    formula <- as.formula(
+      paste0(
+        j, "~", i, "*visit_number + age_at_visit + gender + (1|PatientId)"
+      )
+    )
     
     #Running the mixed-effect model
     clin_lmer[[i]] <- lmer(formula, data = input_RM_long)
@@ -143,7 +170,7 @@ for(j in clinical_outcomes) {
       rownames_to_column(var = "term") %>%
       filter(term == i)
     
-    #Running ANOVA on the interaction term (since visit_number has 3 factor-level time points [1,4,7])
+    #Running ANOVA on the interaction term (time)
     interaction <- anova(clin_lmer[[i]], type = 3) %>%
       as.data.frame() %>%
       rownames_to_column(var = "term") %>%
@@ -181,6 +208,109 @@ clin_mlm_results <- bind_rows(clin_mlm_results) %>%
 write.csv(clin_mlm_results, "trackingPD_clin_mlm.csv", row.names = F)
 ```
 
+Re-running the lmer with levodopa variables (dichotomized & continuous) as covariates:
+
+```{r}
+clin_ldopa_mlm_results <- list()
+
+for (j in clinical_outcomes) {
+  
+  for (cov in ldopa_vars) {
+    
+    clin_lmer <- list()
+    clin_results <- list()
+    
+    for (i in module_colours) {
+      
+      #Defining the model formula
+      formula <- as.formula(
+        paste0(
+          j, "~", i, "*visit_number + age_at_visit + gender + ",
+          cov, " + (1|PatientId)"
+        )
+      )
+      
+      #Running the mixed-effect model
+      clin_lmer[[i]] <- lmer(formula, data = input_RM_long)
+      
+      #Extracting the main effect (module eigenprotein)
+      main <- summary(clin_lmer[[i]])$coefficients %>% 
+        as.data.frame() %>%
+        rownames_to_column(var = "term") %>%
+        filter(term == i)
+      
+      #Running ANOVA on the interaction term (time)
+      interaction <- anova(clin_lmer[[i]], type = 3) %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "term") %>%
+        filter(term == paste0(i, ":visit_number"))
+      
+      #Building the results table
+      clin_results[[i]] <- data.frame(
+        clin_var = j,
+        model = cov,
+        module = i,
+        beta = main$Estimate,
+        se = main$`Std. Error`,
+        t = main$`t value`,
+        p_main = main$`Pr(>|t|)`,
+        F = interaction$`F value`,
+        p_interaction = interaction$`Pr(>F)`
+      )
+      
+    }
+    
+    #Compiling results for each clinical outcome and model
+    clin_ldopa_mlm_results[[j]][[cov]] <- bind_rows(clin_results)
+    
+  }
+}
+```
+
+```{r}
+#Compiling results from both levodopa models (dichotomized & continuous)
+clin_ldopa_mlm_results <- purrr::imap_dfr(
+  clin_ldopa_mlm_results,
+  function(model_list, outcome) {
+    purrr::imap_dfr(
+      model_list,
+      function(df, covariate) {
+        df %>%
+          mutate(model = covariate)
+      }
+    )
+  },
+  .id = "clin_var"
+)
+
+#Calculating BH-adjusted p-values
+clin_ldopa_mlm_results <- clin_ldopa_mlm_results %>%
+  group_by(clin_var, model) %>%
+  mutate(
+    FDR_main = p.adjust(p_main, method = "BH"),
+    FDR_interaction = p.adjust(p_interaction, method = "BH")
+  ) %>%
+  ungroup() %>%
+  dplyr::select(
+    clin_var, model, module, everything()
+  )
+```
+
+```{r}
+#Saving the outputs
+write.csv(
+  clin_ldopa_mlm_results %>% filter(model == "ldopa_bin"), 
+  "trackingPD_clin_ldopabin_mlm.csv", 
+  row.names = F
+)
+
+write.csv(
+  clin_ldopa_mlm_results %>% filter(model == "ledd_total"), 
+  "trackingPD_clin_ldopadose_mlm.csv", 
+  row.names = F
+)
+```
+
 ## MIXED-EFFECT MODELS WITH clin_var ~ probe_id ##
 
 ```{r}
@@ -197,7 +327,11 @@ for(j in clinical_outcomes) {
     probe <- protein_list$probe.id[i]
     
     #Defining the model formula
-    formula <- as.formula(paste0(j, "~", probe, "*visit_number + age_at_visit + gender + (1|PatientId)"))
+    formula <- as.formula(
+      paste0(
+        j, "~", probe, "*visit_number + age_at_visit + gender + (1|PatientId)"
+      )
+    )
     
     #Running the mixed-effect model
     prot_lmer[[i]] <- lmer(formula, data = input_RM_long)
@@ -208,7 +342,7 @@ for(j in clinical_outcomes) {
       rownames_to_column(var = "term") %>%
       filter(term == probe)
     
-    #Running ANOVA on the interaction term
+    #Running ANOVA on the interaction term (time)
     interaction <- anova(prot_lmer[[i]], type = 3) %>%
       as.data.frame() %>%
       rownames_to_column(var = "term") %>%
@@ -251,3 +385,123 @@ prot_mlm_results <- bind_rows(prot_mlm_results) %>%
 #Saving the output
 write.csv(prot_mlm_results, "trackingPD_prot_mlm.csv", row.names = F)
 ```
+
+Re-running the lmer with levodopa variables (dichotomized & continuous) as covariates:
+
+```{r}
+prot_ldopa_mlm_results <- list()
+
+for (j in clinical_outcomes) {
+  
+  for (cov in ldopa_vars) {
+    
+    prot_lmer <- list()
+    prot_results <- list()
+    
+    for (i in 1:nrow(protein_list)) {
+      
+      probe <- protein_list$probe.id[i]
+      
+      #Defining the model formula
+      formula <- as.formula(
+        paste0(
+          j, "~", probe, "*visit_number + age_at_visit + gender + ", cov, " + (1|PatientId)"
+        )
+      )
+      
+      #Running the mixed-effect model
+      prot_lmer[[i]] <- lmer(formula, data = input_RM_long)
+      
+      #Extracting the main effect (protein)
+      main <- summary(prot_lmer[[i]])$coefficients %>% 
+        as.data.frame() %>%
+        rownames_to_column(var = "term") %>%
+        filter(term == probe)
+      
+      #Running ANOVA on the interaction term (time)
+      interaction <- anova(prot_lmer[[i]], type = 3) %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "term") %>%
+        filter(term == paste0(probe, ":visit_number"))
+      
+      #Building the results table
+      prot_results[[i]] <- data.frame(
+        clin_var = j,
+        model = cov,
+        probe.id = probe,
+        beta = main$Estimate,
+        se = main$`Std. Error`,
+        t = main$`t value`,
+        p_main = main$`Pr(>|t|)`,
+        F = interaction$`F value`,
+        p_interaction = interaction$`Pr(>F)`
+      )
+      
+    }
+    
+    #Compiling results for each clinical outcome and model
+    prot_ldopa_mlm_results[[j]][[cov]] <- bind_rows(prot_results)
+    
+  }
+}
+```
+
+```{r}
+#Compiling results from both models using purrr
+prot_ldopa_mlm_results <- purrr::imap_dfr(
+  prot_ldopa_mlm_results,
+  function(model_list, outcome) {
+
+    purrr::imap_dfr(
+      model_list,
+      function(df, covariate) {
+        df %>%
+          mutate(model = covariate)
+      }
+    )
+  },
+  .id = "clin_var"
+)
+
+#Adding protein annotations and BH-adjusted p-values
+prot_ldopa_mlm_results <- prot_ldopa_mlm_results %>%
+  left_join(
+    protein_list %>% 
+      dplyr::select(probe.id, protein.symbol),
+    by = "probe.id"
+  ) %>%
+  mutate(
+    probe_id = probe.id,
+    protein_symbol = protein.symbol
+  ) %>%
+  
+  #Performing separate BH corrections for each model
+  group_by(clin_var, model) %>%
+  mutate(
+    FDR_main = p.adjust(p_main, method = "BH"),
+    FDR_interaction = p.adjust(p_interaction, method = "BH")
+  ) %>%
+  ungroup() %>%
+  
+  #Reorganising column order for clarity
+  dplyr::select(
+    clin_var, model, protein_symbol, probe_id,
+    everything(), -probe.id, -protein.symbol
+  )
+```
+
+```{r}
+#Saving the outputs
+write.csv(
+  prot_ldopa_mlm_results %>% filter(model == "ldopa_bin"), 
+  "trackingPD_prot_ldopabin_mlm.csv", 
+  row.names = F
+)
+
+write.csv(
+  prot_ldopa_mlm_results %>% filter(model == "ledd_total"), 
+  "trackingPD_prot_ldopadose_mlm.csv", 
+  row.names = F
+)
+```
+
