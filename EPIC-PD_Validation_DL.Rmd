@@ -42,12 +42,16 @@ analyte_info <- read.csv("analyte_info.csv") #Aptamer metadata
 protein_list <- protein_list %>%
   
   #Matching the protein list with mappable probe IDs
-  left_join(analyte_info %>% 
-              dplyr::select("AptName", "EntrezGeneSymbol") %>%
-              dplyr::rename("protein.symbol" = "EntrezGeneSymbol",
-                            "probe.id" = "AptName"),
-            by = "protein.symbol",
-            relationship = "many-to-many") %>% #Same Entrez symbols can have different probe IDs
+  left_join(
+    analyte_info %>% 
+      dplyr::select("AptName", "EntrezGeneSymbol") %>%
+      dplyr::rename(
+        "protein.symbol" = "EntrezGeneSymbol",
+        "probe.id" = "AptName"
+      ),
+    by = "protein.symbol",
+    relationship = "many-to-many" #Same Entrez symbols can have different probe IDs
+  ) %>% 
   
   #Renaming the module names using a common naming system
   mutate(module = case_when(
@@ -134,7 +138,7 @@ input_RM_long <- left_join(me_all, input_RM, by = c("PatientId", "visit_number")
 #Specifying contrasts for type III ANOVA (lmer with interactions)
 contrasts(input_RM_long$visit_number) <- contr.sum(3) #For 3 time points (1,4,7)
 contrasts(input_RM_long$gender) <- contr.sum(2) #For 2 sex categories (F,M)
-contrasts(input_RM_long$ldopa_bin) <- contr.sum(2)
+contrasts(input_RM_long$ldopa_bin) <- contr.sum(2) #For 2 levels in levodopa status (ON,OFF)
 ```
 
 Note: 
@@ -504,4 +508,3 @@ write.csv(
   row.names = F
 )
 ```
-
